@@ -1,0 +1,172 @@
+import matplotlib.pyplot as plt
+import pandas as pd
+import streamlit as st
+import numpy as np
+import cv2
+from PIL import Image, ImageOps
+from io import BytesIO
+from tensorflow.keras.applications import ResNet50
+from tensorflow.keras.applications import InceptionV3
+from tensorflow.keras.applications import imagenet_utils
+from tensorflow.keras.applications.inception_v3 import preprocess_input
+from tensorflow.keras.preprocessing.image import img_to_array
+from tensorflow.keras.preprocessing.image import load_img
+def welcome():
+    st.title('Welcome')    
+    st.subheader('Image Analyzation and Pre-Processing')
+def analyze(uploaded_file):
+    
+    #Default Configuration
+    st.set_option('deprecation.showfileUploaderEncoding', False)
+    
+    #This one everytime we have changes, it will instantly show realtime
+    realtime_update = st.sidebar.checkbox(label="Update in Real Time", value=True)
+    
+    if uploaded_file:
+        
+        col1, col2, col3, col4 = st.beta_columns(4)
+        #Original
+        with col1:
+            img = Image.open(uploaded_file)
+            fig0 = plt.figure(figsize=(5,5))
+            plt.imshow(img)        
+            st.pyplot(fig0)
+        
+        #Invert
+        with col2:
+            pil2invert = np.array(img.convert("L"))
+            fig1 = plt.figure(figsize=(5,5))
+            plt.imshow(pil2invert)        
+            st.pyplot(fig1)
+        
+        #Gray
+        with col3:
+            pil2gray = ImageOps.grayscale(img)
+            fig2 = plt.figure(figsize=(5,5))
+            plt.imshow(pil2gray, 'gray')        
+            st.pyplot(fig2)
+
+        with col4:
+            img_palette = img.convert("P", palette=Image.ADAPTIVE, colors=8)
+            fig3 = plt.figure(figsize=(5,5))
+            plt.imshow(img_palette, 'gray')        
+            st.pyplot(fig3)
+def preprocess(uploaded_file):
+    
+    #Default Configuration
+    st.set_option('deprecation.showfileUploaderEncoding', False)
+    #This one everytime we have changes, it will instantly show realtime
+    realtime_update = st.sidebar.checkbox(label="Update in Real Time", value=True)
+    
+    if uploaded_file:
+
+        col1, col2, col3, col4 = st.beta_columns(4)
+
+        img = Image.open(uploaded_file)
+        #Conversion
+        pil2cvt = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)        
+        pil2cvt2gray = cv2.cvtColor(pil2cvt, cv2.COLOR_BGR2GRAY)
+        st.write("Thresholding")
+        
+        gray_eqhist = cv2.equalizeHist(pil2cvt2gray)
+        clahe=cv2.createCLAHE(clipLimit=40)
+        applied_clahe = clahe.apply(gray_eqhist)
+        
+        th = st.sidebar.slider(
+            label='Threshold Value',
+            min_value=50,
+            max_value=100)
+        max_val = st.sidebar.slider(
+            label='Max Value',
+            min_value=200,
+            max_value=255)
+
+        ret,thresh1 = cv2.threshold(applied_clahe,th,max_val,cv2.THRESH_BINARY)
+        
+        with col1:
+            fig1 = plt.figure(figsize=(14,8))
+            plt.imshow(gray_eqhist, 'gray')        
+            st.pyplot(fig1)
+        
+        with col2:
+            fig2 = plt.figure(figsize=(14,8))
+            plt.imshow(applied_clahe, 'gray')        
+            st.pyplot(fig2)
+
+        with col3:
+            fig3 = plt.figure(figsize=(14,8))
+            plt.imshow(thresh1, 'gray')        
+            st.pyplot(fig3)
+
+        with col4:
+            fig4 = plt.figure(figsize=(14,8))
+            plt.imshow(applied_clahe, 'gray')        
+            st.pyplot(fig4)
+def modeling(uploaded_file):
+
+    models_list = [ "Inception", "ResNet"]
+    network = st.sidebar.selectbox("Select the Model", models_list)
+    
+    # define a dictionary that maps model names to their classes
+    # inside Keras
+
+    MODELS = {
+        "Inception": InceptionV3,
+        "ResNet": ResNet50
+    }
+
+
+    if uploaded_file:
+
+        bytes_data = uploaded_file.read()
+        inputShape = (224, 224)
+        preprocess = imagenet_utils.preprocess_input
+    
+
+        if network in ("Inception"):
+            inputShape = (299, 299)
+            preprocess = preprocess_input
+        
+        Network = MODELS[network]
+        model = Network(weights="imagenet")
+        
+        image = Image.open(BytesIO(bytes_data))
+        image = image.convert("RGB")
+        image = image.resize(inputShape)
+        image = img_to_array(image)
+        
+        image = np.expand_dims(image, axis=0)
+        image = preprocess(image)
+        
+        prediction = model.predict(image)
+        predictions = imagenet_utils.decode_predictions(prediction)
+        imagenetID, labels, prob = predictions[0][0]
+        
+        st.image(bytes_data, caption=[f"{labels} {prob*100:.2f}"])
+        st.subheader(f"Top Predictions from {network}")
+        st.dataframe(
+            pd.DataFrame(
+                predictions[0], columns=["Network", "Classification", "Confidence"]
+            )
+        )
+# In[8]:
+st.set_page_config(
+    page_title = "Competer Vision", 
+    layout     = "wide",
+    initial_sidebar_state = "expanded"
+)
+
+selected_box = st.sidebar.selectbox('Choose one of the following', 
+                                    ('Welcome', 'Analyze', 'Preprocess', 'Modeling'))
+
+uploaded_file = st.sidebar.file_uploader("Choose an image to classify", type=["jpg", "jpeg", "png"])
+
+
+if selected_box == 'Welcome':
+    welcome()    
+if selected_box == 'Analyze':
+    analyze(uploaded_file)
+if selected_box == 'Preprocess':
+    preprocess(uploaded_file)
+if selected_box == 'Modeling':
+    modeling(uploaded_file)
